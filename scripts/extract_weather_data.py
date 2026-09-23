@@ -31,11 +31,14 @@ MAX_RETRIES = 5
 # Local historical store. Swap load_history/save_history for Delta table
 # reads/writes when this moves to Databricks.
 DATA_DIR = Path(__file__).resolve().parents[1] / "data"
-OBSERVATIONS_PATH = DATA_DIR / "weather_observations_hourly.parquet"
 ZONE_STATION_PATH = DATA_DIR / "zone_station_map.parquet"
+ZONE_OBSERVATIONS_PATH = DATA_DIR / "weather_observations_hourly_by_zone.parquet"
 
 # One row per station per observation time
 KEY_COLUMNS = ["station_id", "observed_at_utc"]
+
+# One row per zone-county per observation time
+ZONE_KEY_COLUMNS = ["state_zone", "fips", "observed_at_utc"]
 
 OBSERVATION_COLUMNS = [
     "station_id",
@@ -99,10 +102,12 @@ def download_zone_county_file(url: str) -> pd.DataFrame:
 def get_new_york_zone(df: pd.DataFrame) -> pd.DataFrame:
     new_york_df = df[df["state"] == "NY"].copy()
     new_york_df = new_york_df.dropna(subset=["latitude", "longitude"]).reset_index(drop=True)
-    new_york_df = new_york_df.drop_duplicates(subset=["state_zone"]).reset_index(drop=True)
+    # One row per zone-county pair, a zone can span several counties
+    new_york_df = new_york_df.drop_duplicates(subset=["state_zone", "fips"]).reset_index(drop=True)
 
-    print("New York zones records found: {}".format(len(new_york_df)))
-    print("Unique New York zones found: {}".format(new_york_df["fips"].nunique()))
+    print("New York zone-county records found: {}".format(len(new_york_df)))
+    print("Unique New York zones found: {}".format(new_york_df["state_zone"].nunique()))
+    print("Unique New York counties found: {}".format(new_york_df["fips"].nunique()))
 
     return new_york_df
 
@@ -254,6 +259,16 @@ def get_station_watermarks(history_df: pd.DataFrame) -> pd.Series:
     return history_df.groupby("station_id")["observed_at_utc"].max()
 
 
+def build_zone_observations(observations_df: pd.DataFrame, zone_station_df: pd.DataFrame) -> pd.DataFrame:
+
+    # Attach each station's readings to every zone-county it serves
+    zone_observations_df = zone_station_df[
+        ["state_zone", "zone_name", "county", "fips", "station_id", "station_name", "distance_km"]
+    ].merge(observations_df, on="station_id", how="inner")
+
+    return zone_observations_df.sort_values(ZONE_KEY_COLUMNS).reset_index(drop=True)
+
+
 def main():
 
     end_utc = pd.Timestamp.now(tz="UTC")
@@ -304,26 +319,31 @@ def main():
 
     if not new_frames:
         print("No new observations to append.")
+        updated_df = history_df
+    else:
+        new_df = pd.concat(new_frames, ignore_index=True)
+        new_df["ingested_at_utc"] = pd.Timestamp.now(tz="UTC")
+
+        print("New records to append: {}".format(len(new_df)))
+
+        if history_df.empty:
+            updated_df = new_df
+        else:
+            updated_df = pd.concat([history_df, new_df], ignore_index=True)
+
+        updated_df = (
+            updated_df[OBSERVATION_COLUMNS]
+            .drop_duplicates(subset=KEY_COLUMNS, keep="first")
+            .sort_values(KEY_COLUMNS)
+            .reset_index(drop=True)
+        )
+
+    if updated_df.empty:
         return
 
-    new_df = pd.concat(new_frames, ignore_index=True)
-    new_df["ingested_at_utc"] = pd.Timestamp.now(tz="UTC")
-
-    print("New records to append: {}".format(len(new_df)))
-
-    if history_df.empty:
-        updated_df = new_df
-    else:
-        updated_df = pd.concat([history_df, new_df], ignore_index=True)
-
-    updated_df = (
-        updated_df[OBSERVATION_COLUMNS]
-        .drop_duplicates(subset=KEY_COLUMNS, keep="first")
-        .sort_values(KEY_COLUMNS)
-        .reset_index(drop=True)
-    )
-
-    save_history(updated_df, OBSERVATIONS_PATH)
+    #Rebuild the zone/county view from the full station history
+    zone_observations_df = build_zone_observations(updated_df, zone_station_df)
+    save_history(zone_observations_df, ZONE_OBSERVATIONS_PATH)
 
 
 if __name__ == "__main__":
