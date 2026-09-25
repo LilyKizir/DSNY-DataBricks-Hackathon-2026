@@ -272,3 +272,7 @@ if __name__ == '__main__':
               .format("delta") \
               .mode("overwrite") \
               .saveAsTable(full_table_path)
+
+            # Enable row tracking so DLT can read it incrementally
+            print(f"Enabling row tracking for: {full_table_path}")
+            spark.sql(f"ALTER TABLE {full_table_path} SET TBLPROPERTIES ('delta.enableRowTracking' = 'true')")
