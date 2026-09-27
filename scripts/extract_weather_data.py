@@ -6,58 +6,156 @@ import os
 import time
 from pathlib import Path
 from dotenv import load_dotenv
+from scripts.connect_databricks import get_spark
+from delta.tables import DeltaTable
+from pyspark.sql import SparkSession, functions as F
+from pyspark.sql.types import StructType, StructField, StringType, DoubleType, TimestampType
 
 load_dotenv()
 WEATHER_API_KEY = os.getenv("WEATHER_API_KEY")
 ZONE_COUNTY_URL = os.getenv("ZONE_COUNTY_URL")
+IEM_STATIONS_URL = os.getenv("IEM_STATIONS_URL")
+IEM_ASOS_URL = os.getenv("IEM_ASOS_URL")
 
-HEADERS = {
-    "User-Agent": WEATHER_API_KEY,
-    "Accept": "application/geo+json"
-}
+# Same credentials as connect_databricks.py. DATABRICKS_CLUSTER_ID is optional,
+# serverless compute is used when it is not set.
+DATABRICKS_SERVER_HOST = os.getenv("DATABRICKS_SERVER_HOST")
+DATABRICKS_TOKEN = os.getenv("DATABRICKS_TOKEN")
+DATABRICKS_CLUSTER_ID = os.getenv("DATABRICKS_CLUSTER_ID")
 
-# Measured hourly observations (ASOS airport stations) from the Iowa Environmental Mesonet.
-# The NWS API only keeps ~7 days of observations and the NCEI hourly archive
-# stopped updating in Aug 2025, so IEM is used for the backfill and daily runs.
-IEM_STATIONS_URL = "https://mesonet.agron.iastate.edu/geojson/network/NY_ASOS.geojson"
-IEM_ASOS_URL = "https://mesonet.agron.iastate.edu/cgi-bin/request/asos.py"
-
-BACKFILL_START = pd.Timestamp("2025-01-01", tz="UTC")
+START_TIMESTAMP = pd.Timestamp("2025-01-01", tz="UTC")
 
 # Pause between IEM requests, it rate limits aggressive clients
 REQUEST_PAUSE_SECONDS = 2
 MAX_RETRIES = 5
 
-# Local historical store. Swap load_history/save_history for Delta table
-# reads/writes when this moves to Databricks.
 DATA_DIR = Path(__file__).resolve().parents[1] / "data"
 ZONE_STATION_PATH = DATA_DIR / "zone_station_map.parquet"
-ZONE_OBSERVATIONS_PATH = DATA_DIR / "weather_observations_hourly_by_zone.parquet"
 
-# One row per station per observation time
-KEY_COLUMNS = ["station_id", "observed_at_utc"]
+# Delta table holding the hourly observations, one row per zone-county per hour
+WEATHER_TABLE = "the_data_masons.bronze.bronze_weather_data"
 
 # One row per zone-county per observation time
 ZONE_KEY_COLUMNS = ["state_zone", "fips", "observed_at_utc"]
 
-OBSERVATION_COLUMNS = [
-    "station_id",
-    "observed_at_utc",
-    "temperature",
-    "temperature_unit",
-    "wind_speed",
-    "wind_speed_unit",
-    "ingested_at_utc"
-]
+WEATHER_TABLE_SCHEMA = StructType([
+    StructField("state_zone", StringType()),
+    StructField("zone_name", StringType()),
+    StructField("county", StringType()),
+    StructField("fips", StringType()),
+    StructField("nyiso_zone", StringType()),
+    StructField("nyiso_zone_name", StringType()),
+    StructField("station_id", StringType()),
+    StructField("station_name", StringType()),
+    StructField("distance_km", DoubleType()),
+    StructField("observed_at_utc", TimestampType()),
+    StructField("temperature", DoubleType()),
+    StructField("temperature_unit", StringType()),
+    StructField("wind_speed", DoubleType()),
+    StructField("wind_speed_unit", StringType()),
+    StructField("ingested_at_utc", TimestampType())
+])
 
+# NYISO load zone names as they appear in NYISO load/price data
+NYISO_ZONE_NAMES = {
+    "A": "WEST",
+    "B": "GENESE",
+    "C": "CENTRL",
+    "D": "NORTH",
+    "E": "MHK VL",
+    "F": "CAPITL",
+    "G": "HUD VL",
+    "H": "MILLWD",
+    "I": "DUNWOD",
+    "J": "N.Y.C.",
+    "K": "LONGIL"
+}
 
+# Approximate county -> NYISO zone
+NYISO_COUNTY_ZONES = {
+    # A - West
+    "36003": "A",  # Allegany
+    "36009": "A",  # Cattaraugus
+    "36013": "A",  # Chautauqua
+    "36029": "A",  # Erie
+    "36037": "A",  # Genesee
+    "36063": "A",  # Niagara
+    "36073": "A",  # Orleans
+    "36121": "A",  # Wyoming
+    # B - Genesee
+    "36051": "B",  # Livingston
+    "36055": "B",  # Monroe
+    "36069": "B",  # Ontario
+    "36117": "B",  # Wayne
+    "36123": "B",  # Yates
+    # C - Central
+    "36007": "C",  # Broome
+    "36011": "C",  # Cayuga
+    "36015": "C",  # Chemung
+    "36017": "C",  # Chenango
+    "36023": "C",  # Cortland
+    "36053": "C",  # Madison
+    "36067": "C",  # Onondaga
+    "36075": "C",  # Oswego
+    "36097": "C",  # Schuyler
+    "36099": "C",  # Seneca
+    "36101": "C",  # Steuben
+    "36107": "C",  # Tioga
+    "36109": "C",  # Tompkins
+    # D - North
+    "36019": "D",  # Clinton
+    "36031": "D",  # Essex
+    "36033": "D",  # Franklin
+    # E - Mohawk Valley
+    "36025": "E",  # Delaware
+    "36041": "E",  # Hamilton
+    "36043": "E",  # Herkimer
+    "36045": "E",  # Jefferson
+    "36049": "E",  # Lewis
+    "36057": "E",  # Montgomery
+    "36065": "E",  # Oneida
+    "36077": "E",  # Otsego
+    "36089": "E",  # St. Lawrence
+    # F - Capital
+    "36001": "F",  # Albany
+    "36021": "F",  # Columbia
+    "36035": "F",  # Fulton
+    "36039": "F",  # Greene
+    "36083": "F",  # Rensselaer
+    "36091": "F",  # Saratoga
+    "36093": "F",  # Schenectady
+    "36095": "F",  # Schoharie
+    "36113": "F",  # Warren
+    "36115": "F",  # Washington
+    # G - Hudson Valley
+    "36027": "G",  # Dutchess
+    "36071": "G",  # Orange
+    "36079": "G",  # Putnam
+    "36087": "G",  # Rockland
+    "36105": "G",  # Sullivan
+    "36111": "G",  # Ulster
+    # I - Dunwoodie (H - Millwood is a small slice of northern Westchester)
+    "36119": "I",  # Westchester
+    # J - New York City
+    "36005": "J",  # Bronx
+    "36047": "J",  # Kings
+    "36061": "J",  # New York
+    "36081": "J",  # Queens
+    "36085": "J",  # Richmond
+    # K - Long Island
+    "36059": "K",  # Nassau
+    "36103": "K"   # Suffolk
+}
+
+#Get all the zone county
 def download_zone_county_file(url: str) -> pd.DataFrame:
-
-    print("Downloading NWS zone-county file...")
 
     response = requests.get(
         url,
-        headers=HEADERS,
+        headers={
+            "User-Agent": WEATHER_API_KEY,
+            "Accept": "application/geo+json"
+        },
         timeout=30
     )
 
@@ -99,6 +197,7 @@ def download_zone_county_file(url: str) -> pd.DataFrame:
     return df
 
 
+#Filter only New York zone
 def get_new_york_zone(df: pd.DataFrame) -> pd.DataFrame:
     new_york_df = df[df["state"] == "NY"].copy()
     new_york_df = new_york_df.dropna(subset=["latitude", "longitude"]).reset_index(drop=True)
@@ -112,9 +211,22 @@ def get_new_york_zone(df: pd.DataFrame) -> pd.DataFrame:
     return new_york_df
 
 
+# Map counties to NYISO zones
+def add_nyiso_zone(df: pd.DataFrame) -> pd.DataFrame:
+
+    df = df.copy()
+    df["nyiso_zone"] = df["fips"].map(NYISO_COUNTY_ZONES)
+    df["nyiso_zone_name"] = df["nyiso_zone"].map(NYISO_ZONE_NAMES)
+
+    unmapped = df.loc[df["nyiso_zone"].isna(), ["fips", "county"]].drop_duplicates()
+    if not unmapped.empty:
+        print("Counties with no NYISO zone: {}".format(unmapped.to_dict("records")))
+
+    return df
+
+# Get New York stations
 def get_new_york_stations() -> pd.DataFrame:
 
-    print("Downloading New York ASOS station list...")
 
     response = requests.get(IEM_STATIONS_URL, timeout=60)
     response.raise_for_status()
@@ -133,7 +245,7 @@ def get_new_york_stations() -> pd.DataFrame:
 
     # Keep stations that cover the whole backfill window and are still reporting
     stations_df = stations_df[
-        (pd.to_datetime(stations_df["archive_begin"], utc=True) <= BACKFILL_START) &
+        (pd.to_datetime(stations_df["archive_begin"], utc=True) <= START_TIMESTAMP) &
         stations_df["archive_end"].isna()
     ].reset_index(drop=True)
 
@@ -141,7 +253,7 @@ def get_new_york_stations() -> pd.DataFrame:
 
     return stations_df
 
-
+# Map the zones to the nearest station
 def map_zones_to_nearest_station(zones_df: pd.DataFrame, stations_df: pd.DataFrame) -> pd.DataFrame:
 
     # Haversine distance from every zone to every station
@@ -159,7 +271,7 @@ def map_zones_to_nearest_station(zones_df: pd.DataFrame, stations_df: pd.DataFra
     nearest = distance_km.argmin(axis=1)
 
     zone_station_df = zones_df[
-        ["state_zone", "zone_name", "county", "fips", "latitude", "longitude"]
+        ["state_zone", "zone_name", "county", "fips", "nyiso_zone", "nyiso_zone_name", "latitude", "longitude"]
     ].reset_index(drop=True)
 
     zone_station_df = pd.concat(
@@ -176,7 +288,7 @@ def map_zones_to_nearest_station(zones_df: pd.DataFrame, stations_df: pd.DataFra
 
     return zone_station_df
 
-
+#Get the time series observations for a station
 def get_station_observations(station_id: str, start_utc: pd.Timestamp, end_utc: pd.Timestamp) -> pd.DataFrame:
 
     params = {
@@ -187,31 +299,54 @@ def get_station_observations(station_id: str, start_utc: pd.Timestamp, end_utc: 
         "tz": "Etc/UTC",
         "format": "onlycomma",
         "missing": "M",
-        "report_type": 3  # routine hourly reports only
+        "report_type": 3  
     }
 
     for attempt in range(1, MAX_RETRIES + 1):
 
-        response = requests.get(IEM_ASOS_URL, params=params, timeout=120)
-
-        rate_limited = (
-            response.status_code in (429, 503) or
-            response.text.startswith("Too many requests")
-        )
+        try:
+            response = requests.get(IEM_ASOS_URL, params=params, timeout=120)
+            rate_limited = (
+                response.status_code in (429, 503) or
+                response.text.startswith("Too many requests")
+            )
+            reason = "rate limited"
+        except (requests.ConnectionError, requests.Timeout) as e:
+            rate_limited = True
+            reason = type(e).__name__
 
         if not rate_limited:
             break
 
+        if attempt == MAX_RETRIES:
+            # RequestException so main() skips this station instead of crashing
+            raise requests.RequestException(
+                "{} after {} attempts".format(reason, MAX_RETRIES)
+            )
+
         wait = 30 * attempt
-        print("Rate limited on {}, retrying in {}s...".format(station_id, wait))
+        print("{} on {}, retrying in {}s...".format(reason, station_id, wait))
         time.sleep(wait)
 
     response.raise_for_status()
+
+    # No reports in the window
+    if not response.text.strip():
+        return pd.DataFrame(columns=["station_id", "observed_at_utc", "temperature",
+                                     "temperature_unit", "wind_speed", "wind_speed_unit"])
 
     raw_df = pd.read_csv(
         io.StringIO(response.text),
         na_values="M"
     )
+
+    missing_columns = {"station", "valid", "tmpf", "sped"} - set(raw_df.columns)
+    if missing_columns:
+        raise requests.RequestException(
+            "Unexpected IEM response, missing columns {}: {}".format(
+                sorted(missing_columns), response.text[:200]
+            )
+        )
 
     observations_df = pd.DataFrame({
         "station_id": raw_df["station"],
@@ -231,39 +366,68 @@ def get_station_observations(station_id: str, start_utc: pd.Timestamp, end_utc: 
     return observations_df
 
 
-def load_history(path: Path = OBSERVATIONS_PATH) -> pd.DataFrame:
-
-    if not path.exists():
-        print("No history found at {}. Backfilling from {}.".format(path, BACKFILL_START.date()))
-        return pd.DataFrame(columns=OBSERVATION_COLUMNS)
-
-    history_df = pd.read_parquet(path)
-    print("Loaded {} historical records from {}".format(len(history_df), path))
-
-    return history_df
-
-
 def save_history(df: pd.DataFrame, path: Path) -> None:
 
     path.parent.mkdir(parents=True, exist_ok=True)
     df.to_parquet(path, index=False)
     print("Saved {} records to {}".format(len(df), path))
 
+#Get the latest observations from Databricks table
+def get_latest_observations(spark: SparkSession, table_name: str = WEATHER_TABLE) -> pd.Series:
 
-def get_station_watermarks(history_df: pd.DataFrame) -> pd.Series:
-
-    # Max observation time already stored, per station
-    if history_df.empty:
+    if not spark.catalog.tableExists(table_name):
+        print("Table {} not found. Backfilling from {}.".format(table_name, START_TIMESTAMP.date()))
         return pd.Series(dtype="datetime64[ns, UTC]")
 
-    return history_df.groupby("station_id")["observed_at_utc"].max()
+    latest_pdf = (
+        spark.table(table_name)
+        .groupBy("station_id")
+        .agg(F.unix_timestamp(F.max("observed_at_utc")).alias("latest_epoch"))
+        .toPandas()
+    )
+
+    print("Loaded latest observation time for {} stations from {}".format(len(latest_pdf), table_name))
+
+    return (
+        pd.to_datetime(latest_pdf["latest_epoch"], unit="s", utc=True)
+        .set_axis(latest_pdf["station_id"])
+    )
+
+#Append new observations to the Delta table
+def append_to_delta(spark: SparkSession, df: pd.DataFrame, table_name: str = WEATHER_TABLE) -> None:
+
+    columns = [field.name for field in WEATHER_TABLE_SCHEMA.fields]
+    new_sdf = spark.createDataFrame(
+        df[columns].drop_duplicates(subset=ZONE_KEY_COLUMNS),
+        schema=WEATHER_TABLE_SCHEMA
+    )
+
+    if not spark.catalog.tableExists(table_name):
+        new_sdf.write.format("delta").saveAsTable(table_name)
+        print("Created {} with {} records".format(table_name, len(df)))
+        return
+
+    # Insert-only merge, so a rerun over the same window does not duplicate rows
+    (
+        DeltaTable.forName(spark, table_name).alias("target")
+        .merge(
+            new_sdf.alias("source"),
+            " AND ".join("target.{0} = source.{0}".format(c) for c in ZONE_KEY_COLUMNS)
+        )
+        .whenNotMatchedInsertAll()
+        .execute()
+    )
+
+    print("Merged {} records into {}".format(len(df), table_name))
 
 
+#Build zone-level observations by mapping stations to zones
 def build_zone_observations(observations_df: pd.DataFrame, zone_station_df: pd.DataFrame) -> pd.DataFrame:
 
     # Attach each station's readings to every zone-county it serves
     zone_observations_df = zone_station_df[
-        ["state_zone", "zone_name", "county", "fips", "station_id", "station_name", "distance_km"]
+        ["state_zone", "zone_name", "county", "fips", "nyiso_zone", "nyiso_zone_name",
+         "station_id", "station_name", "distance_km"]
     ].merge(observations_df, on="station_id", how="inner")
 
     return zone_observations_df.sort_values(ZONE_KEY_COLUMNS).reset_index(drop=True)
@@ -277,6 +441,8 @@ def main():
     df = download_zone_county_file(ZONE_COUNTY_URL)
     #Filter to new York State only
     new_york_df = get_new_york_zone(df)
+    #Tag each county with its NYISO load zone
+    new_york_df = add_nyiso_zone(new_york_df)
 
     #Assign each zone to its nearest active weather station
     stations_df = get_new_york_stations()
@@ -286,16 +452,18 @@ def main():
     station_ids = sorted(zone_station_df["station_id"].unique())
     print("Stations needed for New York zones: {}".format(len(station_ids)))
 
-    #Incremental load: each station starts after its previous max timestamp
-    history_df = load_history()
-    watermarks = get_station_watermarks(history_df)
+    #Incremental load: each station starts after its latest timestamp in the Delta table
+    spark = get_spark()
+    #Pull the latest observations from the Delta table
+    latest_observations = get_latest_observations(spark)
 
     new_frames = []
 
+    #For each station, get the latest observations from the delta table
     for station_id in station_ids:
 
-        previous_max = watermarks.get(station_id)
-        start_utc = BACKFILL_START if previous_max is None else previous_max
+        previous_max = latest_observations.get(station_id)
+        start_utc = START_TIMESTAMP if previous_max is None else previous_max
 
         try:
             observations_df = get_station_observations(station_id, start_utc, end_utc)
@@ -319,31 +487,18 @@ def main():
 
     if not new_frames:
         print("No new observations to append.")
-        updated_df = history_df
-    else:
-        new_df = pd.concat(new_frames, ignore_index=True)
-        new_df["ingested_at_utc"] = pd.Timestamp.now(tz="UTC")
-
-        print("New records to append: {}".format(len(new_df)))
-
-        if history_df.empty:
-            updated_df = new_df
-        else:
-            updated_df = pd.concat([history_df, new_df], ignore_index=True)
-
-        updated_df = (
-            updated_df[OBSERVATION_COLUMNS]
-            .drop_duplicates(subset=KEY_COLUMNS, keep="first")
-            .sort_values(KEY_COLUMNS)
-            .reset_index(drop=True)
-        )
-
-    if updated_df.empty:
         return
 
-    #Rebuild the zone/county view from the full station history
-    zone_observations_df = build_zone_observations(updated_df, zone_station_df)
-    save_history(zone_observations_df, ZONE_OBSERVATIONS_PATH)
+    #Combine all new observation frames
+    new_df = pd.concat(new_frames, ignore_index=True)
+    new_df["ingested_at_utc"] = pd.Timestamp.now(tz="UTC")
+
+    #Attach the new station readings to their zone-counties and append to Delta
+    zone_observations_df = build_zone_observations(new_df, zone_station_df)
+    print("New records to append: {}".format(len(zone_observations_df)))
+
+    #Append the new observations to the Delta table
+    append_to_delta(spark, zone_observations_df)
 
 
 if __name__ == "__main__":
