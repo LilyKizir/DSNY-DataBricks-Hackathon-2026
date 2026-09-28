@@ -5,7 +5,7 @@ on:
     branches:
       - main
     paths:
-      - 'models/**' # Restrict to trigger only when Claude updates the 'models' directory
+      - 'models/3_gold/**' # Restrict to trigger only when Claude updates the 'models' directory
 
 jobs:
   run-databricks-pipeline:
