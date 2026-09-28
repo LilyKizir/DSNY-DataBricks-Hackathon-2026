@@ -1,0 +1,33 @@
+name: Deploy and Run Databricks ETL
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'sql/**' # Restrict to trigger only when Claude updates the SQL directory
+
+jobs:
+  run-databricks-pipeline:
+    runs-on: ubuntu-latest
+    env:
+      DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
+      DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Install Databricks CLI
+        uses: databricks/setup-cli@main
+
+      - name: Update Databricks Git Folder
+        run: |
+          # Replace <repo-id> with your actual Databricks Git Folder ID.
+          # You can find this via the CLI: `databricks repos list`
+          databricks repos update <repo-id> --branch main
+          
+      - name: Trigger Gold Layer ETL Job
+        run: |
+          # Trigger the job and wait for completion (optional --wait flag)
+          databricks jobs run-now --job-id ${{ secrets.DATABRICKS_JOB_ID }}
