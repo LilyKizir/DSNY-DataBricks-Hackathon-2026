@@ -5,7 +5,7 @@ on:
     branches:
       - main
     paths:
-      - 'sql/**' # Restrict to trigger only when Claude updates the SQL directory
+      - 'models/**' # Restrict to trigger only when Claude updates the 'models' directory
 
 jobs:
   run-databricks-pipeline:
@@ -23,9 +23,9 @@ jobs:
 
       - name: Update Databricks Git Folder
         run: |
-          # Replace <repo-id> with your actual Databricks Git Folder ID.
+          # Replace <repo-id> => [2228305554904359] with your actual Databricks Git Folder ID.
           # You can find this via the CLI: `databricks repos list`
-          databricks repos update <repo-id> --branch main
+          databricks repos update 2228305554904359 --branch main
           
       - name: Trigger Gold Layer ETL Job
         run: |
