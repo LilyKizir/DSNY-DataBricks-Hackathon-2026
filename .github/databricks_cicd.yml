@@ -29,5 +29,4 @@ jobs:
           
       - name: Trigger Gold Layer ETL Job
         run: |
-          # Trigger the job and wait for completion (optional --wait flag)
-          databricks jobs run-now --job-id ${{ secrets.DATABRICKS_PIPELINE_ID }}
+          databricks pipelines start-update --pipeline-id ${{ secrets.DATABRICKS_PIPELINE_ID }}
