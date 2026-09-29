@@ -50,7 +50,15 @@ All tables live in the Unity Catalog catalog **`the_data_masons`** on workspace 
 
 ### Prerequisites
 
-- Access to the Databricks workspace above (ask the team to be added)
+- Access to the Databricks workspace
+- Install and Log into Claude Code
+- In Databricks, go to your user icon → **Settings → Developer → Access tokens → Generate new token**.
+- **Add the server** from the repo folder:
+   ```bash
+   claude mcp add --transport http genie \
+     https://<workspace-host>/api/2.0/mcp/genie/<genie-space-id> \
+     --header "Authorization: Bearer <your-token>"
+- Check it. Run claude mcp list, or /mcp inside Claude Code: genie should show as connected.
 - [Databricks CLI](https://docs.databricks.com/dev-tools/cli/install.html), logged in:
   ```bash
   databricks auth login --host ${DATABRICKS_HOST}
