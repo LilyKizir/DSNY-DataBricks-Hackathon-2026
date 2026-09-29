@@ -34,7 +34,7 @@ new gold model: sandbox/ ──► your sandbox pipeline ──► PR ──► 
 
 ## Data
 
-All tables live in the Unity Catalog catalog **`the_data_masons`** on workspace `https://dbc-34432859-d369.cloud.databricks.com`.
+All tables live in the Unity Catalog catalog **`the_data_masons`** on workspace `${DATABRICKS_HOST}`.
 
 | Schema    | Tables                                                                                                                                                                                                                                                                                                     |
 | --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -68,7 +68,7 @@ All tables live in the Unity Catalog catalog **`the_data_masons`** on workspace 
 - Access to the Databricks workspace above (ask the team to be added)
 - [Databricks CLI](https://docs.databricks.com/dev-tools/cli/install.html), logged in:
   ```bash
-  databricks auth login --host https://dbc-34432859-d369.cloud.databricks.com
+  databricks auth login --host ${DATABRICKS_HOST}
   ```
 - Python 3.12 (for the local scripts)
 - Optional: [GitHub CLI](https://cli.github.com/) (`gh auth login`), Tableau Desktop
@@ -81,13 +81,22 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
-Create a `.env` file in the repo root (it's gitignored):
+Create a `.env` file in the repo root (it's gitignored). Workspace-specific values are kept here, not in the repo. Elsewhere in this README, `${NAME}` means "the value of `NAME` from your `.env`". Ask the team for the values.
 
 ```ini
-DATABRICKS_SERVER_HOST=dbc-34432859-d369.cloud.databricks.com
+# Workspace
+DATABRICKS_HOST=https://<workspace>.cloud.databricks.com
+DATABRICKS_SERVER_HOST=<workspace>.cloud.databricks.com
 DATABRICKS_TOKEN=<personal access token>
-DATABRICKS_HTTP_PATH=/sql/1.0/warehouses/401941d60f2786b9
+DATABRICKS_WAREHOUSE_ID=<SQL warehouse id>
+DATABRICKS_HTTP_PATH=/sql/1.0/warehouses/<SQL warehouse id>
 DATABRICKS_CLUSTER_ID=                 # optional; serverless is used when empty
+DATABRICKS_USERNAME=<your workspace login>
+GOLD_PIPELINE_ID=<the-data-masons-pipeline id>
+WORKSPACE_GIT_FOLDER_ID=<workspace Git folder (repo) id>
+GENIE_SPACE_ID=<Genie space id>
+
+# Sources
 WEATHER_API_KEY=<key>
 ZONE_COUNTY_URL=<zone-to-county mapping file URL>
 IEM_STATIONS_URL=<IEM station list URL>
@@ -110,8 +119,8 @@ Test the connection with `python -m scripts.connect_databricks`.
 **Publishing is automatic.** When a merge to `main` changes `models/3_gold/**`, the GitHub Action [`databricks_cicd.yml`](.github/workflows/databricks_cicd.yml) pulls the workspace Git folder and starts the pipeline. To run it by hand (for example after a bronze/silver change, or if the Action fails):
 
 ```bash
-databricks repos update 2228305554904359 --branch main -p <profile>
-databricks pipelines start-update 3f756ff0-30a3-4417-9e2c-97ee920ed727 -p <profile>
+databricks repos update ${WORKSPACE_GIT_FOLDER_ID} --branch main -p <profile>
+databricks pipelines start-update ${GOLD_PIPELINE_ID} -p <profile>
 ```
 
 ## Adding a gold model
@@ -148,7 +157,7 @@ The full walkthrough, including a no-install route with Genie Code in the worksp
 
 ## Tableau
 
-`sample_Tableau_workbook/sample_workbook.twb` connects to the SQL warehouse `401941d60f2786b9` with OAuth, so each person signs in as themselves. To make a copy that points at another gold table, keeping the same connection:
+`sample_Tableau_workbook/sample_workbook.twb` connects to the SQL warehouse `${DATABRICKS_WAREHOUSE_ID}` with OAuth, so each person signs in as themselves. To make a copy that points at another gold table, keeping the same connection:
 
 ```bash
 python scripts/swap_tableau_datasource.py \
@@ -161,7 +170,7 @@ This writes `gold_tableau_workbooks/<model name>.twb`. If the script lists missi
 
 ## Genie
 
-The Genie space **NYISO Energy and Weather Analysis** (id `01f1bab4affc184b90b7087c3cbcd61c`) answers questions in plain English over the silver tables. It's also available to Claude as an MCP server. Treat its SQL as a draft: Genie tends to cut months on UTC and weight zones by station count. For the weather–demand question, it joined the demand fact to `dim_subregion` on mismatched codes (`A` against `ZONA`) and returned 0 rows. The gold models are the reference numbers.
+The Genie space **NYISO Energy and Weather Analysis** (id `${GENIE_SPACE_ID}`) answers questions in plain English over the silver tables. It's also available to Claude as an MCP server. Treat its SQL as a draft: Genie tends to cut months on UTC and weight zones by station count. For the weather–demand question, it joined the demand fact to `dim_subregion` on mismatched codes (`A` against `ZONA`) and returned 0 rows. The gold models are the reference numbers.
 
 ## Known issues
 

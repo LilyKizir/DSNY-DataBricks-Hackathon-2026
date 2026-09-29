@@ -44,5 +44,4 @@ targets:
   sandbox:
     mode: development
     default: true
-    workspace:
-      host: https://dbc-34432859-d369.cloud.databricks.com
+    # The workspace host comes from your CLI profile: always deploy with -p <profile>.

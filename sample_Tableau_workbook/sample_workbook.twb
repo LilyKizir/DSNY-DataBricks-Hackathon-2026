@@ -20,8 +20,8 @@
     <datasource caption='gold_avg_temperature_jan_2026 (the_data_masons.gold.gold_avg_temperature_jan_2026) (gold)' inline='true' name='federated.1ock2y20les3g212p7wnj16hmhom' version='18.1'>
       <connection class='federated'>
         <named-connections>
-          <named-connection caption='dbc-34432859-d369.cloud.databricks.com' name='databricks.14zox061tt0jpr1cn9pg50p2nr54'>
-            <connection authentication='oauth' authentication-type='' class='databricks' dbname='the_data_masons' instanceurl='https://dbc-34432859-d369.cloud.databricks.com/oidc' oauth-config-id='default' odbc-connect-string-extras='' one-time-sql='' schema='gold' server='dbc-34432859-d369.cloud.databricks.com' server-oauth='' username='le.luu@theinformationlab.com' v-http-path='/sql/1.0/warehouses/401941d60f2786b9' v-query-tags=''>
+          <named-connection caption='${DATABRICKS_SERVER_HOST}' name='databricks.14zox061tt0jpr1cn9pg50p2nr54'>
+            <connection authentication='oauth' authentication-type='' class='databricks' dbname='the_data_masons' instanceurl='${DATABRICKS_HOST}/oidc' oauth-config-id='default' odbc-connect-string-extras='' one-time-sql='' schema='gold' server='${DATABRICKS_SERVER_HOST}' server-oauth='' username='${DATABRICKS_USERNAME}' v-http-path='/sql/1.0/warehouses/${DATABRICKS_WAREHOUSE_ID}' v-query-tags=''>
               <connection-customization class='databricks' enabled='false' version='18.1'>
                 <vendor name='databricks' />
                 <driver name='databricks' />
