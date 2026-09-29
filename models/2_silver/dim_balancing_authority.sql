@@ -1,6 +1,12 @@
 use schema silver;
 CREATE OR REFRESH MATERIALIZED VIEW dim_balancing_authority(
-        -- 1. Data Quality Expectations
+    ba_code STRING NOT NULL COMMENT 'Balancing authority code (e.g., NYIS for New York ISO).',
+    ba_name STRING COMMENT 'Full name of the balancing authority entity.',
+    -- 1. Data Quality Expectations
+    CONSTRAINT valid_ba_code EXPECT (ba_code IS NOT NULL) ON VIOLATION DROP ROW,
+
+    -- Primary Key
+    CONSTRAINT pk_dim_balancing_authority PRIMARY KEY (ba_code)
 )
 COMMENT "Balancing authority dim"
 AS 
