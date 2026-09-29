@@ -1,0 +1,33 @@
+name: Deploy and Run Databricks ETL
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'models/3_gold/**' # Restrict to trigger only when Claude updates the 'models' directory
+  workflow_dispatch:
+
+jobs:
+  run-databricks-pipeline:
+    runs-on: ubuntu-latest
+    env:
+      DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
+      DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Install Databricks CLI
+        uses: databricks/setup-cli@main
+
+      - name: Update Databricks Git Folder
+        run: |
+          # Replace <repo-id> => [2228305554904359] with your actual Databricks Git Folder ID.
+          # You can find this via the CLI: `databricks repos list`
+          databricks repos update 2228305554904359 --branch main
+          
+      - name: Trigger Gold Layer ETL Job
+        run: |
+          databricks pipelines start-update ${{ secrets.DATABRICKS_PIPELINE_ID }}
