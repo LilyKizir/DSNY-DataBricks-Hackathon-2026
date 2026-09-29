@@ -39,7 +39,7 @@ All tables live in the Unity Catalog catalog **`the_data_masons`** on workspace 
 | `landing` | `raw_regional_operating_metrics`, `raw_generation_energy_source`, `raw_subregional_demand`: raw EIA responses (`raw_response` as VARIANT)                                                                                                                                                                  |
 | `bronze`  | `bronze_NYISO_operation_metrics`, `bronze_NYISO_generation_energy_source`, `bronze_NYISO_subregional_demand`, `bronze_weather_data`                                                                                                                                                                        |
 | `silver`  | Facts: `fact_NYISO_operation_metrics`, `fact_NYISO_generation_energy_source`, `fact_NYISO_subregional_demand`, `fact_weather_data`<br>Dims: `dim_nyiso_zone`, `dim_weather_station`, `dim_county`, `dim_balancing_authority`, `dim_subregion`, `dim_combined_zone`, `dim_metric_type`, `dim_energy_source` |
-| `gold`    | `gold_daily_weather_by_nyiso_zone`, `gold_avg_temperature_jan_2026`                                                                                                                                                                                                                                        |
+
 
 **Sources**
 
