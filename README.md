@@ -18,7 +18,7 @@ Every AI-generated model is validated twice, because AI-generated SQL can look r
 | Path                         | What's in it                                                                                                         |
 | ---------------------------- | -------------------------------------------------------------------------------------------------------------------- |
 | `models/1_bronze/`           | Materialized views that parse the raw EIA JSON from `landing` and the weather data from api                          |
-| `models/2_silver/`           | Cleaned facts and dim models dimensions                                                                              |
+| `models/2_silver/`           | Cleaned facts and dim models                                                                              |
 | `models/3_gold/`             | Shared gold models (reviewed and merged via PR)                                                                      |
 | `sandbox/`                   | Personal gold experiments, gitignored. Built by your own sandbox pipeline (`databricks.yml`)                         |
 | `scripts/`                   | Ingestion scripts, Databricks connection helper, Tableau datasource swap                                             |
