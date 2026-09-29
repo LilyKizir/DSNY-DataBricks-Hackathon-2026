@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - 'models/3_gold/**' # Restrict to trigger only when Claude updates the 'models' directory
+  workflow_dispatch:
 
 jobs:
   run-databricks-pipeline:
