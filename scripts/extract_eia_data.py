@@ -14,7 +14,7 @@ schema_name = "landing"
 
 # Set global API details
 api_key = dbutils.secrets.get(scope = "the-data-masons", key = "eia_api_key")
-period_start_date = "2026-01-01T00"
+period_start_date = "2025-01-01T00"
 time_period = "2026-01-01T00"
 # time_period = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H")
 LENGTH = 5000

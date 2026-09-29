@@ -1,0 +1,48 @@
+# Personal gold sandbox for trying out new gold models before they're promoted.
+# The shared bronze/silver/gold layers are built by the-data-masons-pipeline
+# from models/** on main. This bundle only builds sandbox/** into a per-user schema (dev_<user>_gold_sandbox).
+
+bundle:
+  name: dsny_gold_sandbox
+
+# sandbox/* is gitignored (experiments stay local), and bundle sync skips gitignored
+# files by default, so the models have to be included explicitly. .gitkeep is kept out
+# because pipelines reject any non .sql/.py file in their glob (and globs can't filter by type).
+sync:
+  include:
+    - sandbox/**
+  exclude:
+    - sandbox/.gitkeep
+
+variables:
+  catalog:
+    description: Catalog that holds the shared layers and the sandbox schemas
+    default: the_data_masons
+  sandbox_schema:
+    description: Per-user schema the sandbox gold tables are written to
+    default: gold_sandbox  # dev mode prefixes it: dev_<user short name>_gold_sandbox
+
+resources:
+  schemas:
+    gold_sandbox_schema:
+      catalog_name: ${var.catalog}
+      name: ${var.sandbox_schema}
+      comment: Personal gold sandbox for ${workspace.current_user.userName}; models are promoted to gold via PR
+
+  pipelines:
+    gold_sandbox:
+      name: gold_sandbox
+      catalog: ${var.catalog}
+      schema: ${resources.schemas.gold_sandbox_schema.name}
+      serverless: true
+      root_path: ./sandbox
+      libraries:
+        - glob:
+            include: ./sandbox/**
+
+targets:
+  sandbox:
+    mode: development
+    default: true
+    workspace:
+      host: https://dbc-34432859-d369.cloud.databricks.com
