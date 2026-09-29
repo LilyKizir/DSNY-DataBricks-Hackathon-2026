@@ -3,3 +3,11 @@
 /.venv
 __pycache__/
 *.pyc
+/.databricks
+
+/sandbox/*
+!/sandbox/.gitkeep
+
+# Tableau autosave/recovery files and swap-script backups
+*.twbr
+*.twb.bak
