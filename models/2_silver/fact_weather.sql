@@ -1,17 +1,17 @@
 USE SCHEMA silver;
 
 CREATE OR REFRESH MATERIALIZED VIEW fact_weather_data (
-    state_zone COMMENT 'NWS weather forecast zone (e.g., NYZ072). Do NOT join this to NYISO grid electricity zones.',
-    fips COMMENT 'County FIPS code.',
-    nyiso_zone COMMENT 'NYISO load zone letter/identifier (e.g., A, B, C... J for NYC, K for Long Island).',
-    station_id COMMENT 'Unique weather station identifier.',
-    distance_km COMMENT 'Distance in km to station.',
-    observed_at_utc COMMENT 'Timestamp of weather observation in UTC.',
-    observation_hour COMMENT 'Timestamp of weather observation in UTC as string "yyyy-MM-ddTHH".',
-    temperature COMMENT 'Air temperature in degrees Fahrenheit.',
-    wind_speed COMMENT 'Wind speed in miles per hour (mph).',
-    bronze_processed_timestamp COMMENT 'Audit timestamp from bronze layer.',
-    silver_processed_timestamp COMMENT 'Audit timestamp for silver processing.',
+    state_zone STRING COMMENT 'NWS weather forecast zone (e.g., NYZ072). Do NOT join this to NYISO grid electricity zones.',
+    fips STRING COMMENT 'County FIPS code.',
+    nyiso_zone STRING COMMENT 'NYISO load zone letter/identifier (e.g., A, B, C... J for NYC, K for Long Island).',
+    station_id STRING COMMENT 'Unique weather station identifier.',
+    distance_km DOUBLE COMMENT 'Distance in km to station.',
+    observed_at_utc TIMESTAMP COMMENT 'Timestamp of weather observation in UTC.',
+    observation_hour STRING COMMENT 'Timestamp of weather observation in UTC as string "yyyy-MM-ddTHH".',
+    temperature DOUBLE COMMENT 'Air temperature in degrees Fahrenheit.',
+    wind_speed DOUBLE COMMENT 'Wind speed in miles per hour (mph).',
+    bronze_processed_timestamp TIMESTAMP COMMENT 'Audit timestamp from bronze layer.',
+    silver_processed_timestamp TIMESTAMP COMMENT 'Audit timestamp for silver processing.',
     
     -- Data Quality Expectations
     CONSTRAINT valid_observed_at EXPECT (observed_at_utc IS NOT NULL) ON VIOLATION DROP ROW,

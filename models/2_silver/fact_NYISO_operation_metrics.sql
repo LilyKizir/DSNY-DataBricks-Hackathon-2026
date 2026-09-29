@@ -1,13 +1,13 @@
 USE SCHEMA silver;
 
 CREATE OR REFRESH MATERIALIZED VIEW fact_NYISO_operation_metrics (
-    rom_id COMMENT 'Unique row hash key for operation metrics.',
-    period_timestamp COMMENT 'Hourly truncated timestamp (UTC) as string "yyyy-MM-ddTHH".',
-    ba_code COMMENT 'Balancing authority code.',
-    type_code COMMENT 'Operational metric code: D = Demand, DF = Day-Ahead Demand Forecast, NG = Net Generation, TI = Total Interchange.',
-    value_mwh COMMENT 'Metric value in Megawatt-hours (MWh).',
-    bronze_processed_timestamp COMMENT 'Audit timestamp from bronze layer.',
-    silver_processed_timestamp COMMENT 'Audit timestamp for silver processing.',
+    rom_id STRING COMMENT 'Unique row hash key for operation metrics.',
+    period_timestamp STRING COMMENT 'Hourly truncated timestamp (UTC) as string "yyyy-MM-ddTHH".',
+    ba_code STRING COMMENT 'Balancing authority code.',
+    type_code STRING COMMENT 'Operational metric code: D = Demand, DF = Day-Ahead Demand Forecast, NG = Net Generation, TI = Total Interchange.',
+    value_mwh DOUBLE COMMENT 'Metric value in Megawatt-hours (MWh).',
+    bronze_processed_timestamp TIMESTAMP COMMENT 'Audit timestamp from bronze layer.',
+    silver_processed_timestamp TIMESTAMP COMMENT 'Audit timestamp for silver processing.',
     
     -- 1. Data Quality Expectations
     CONSTRAINT valid_rom_id EXPECT (rom_id IS NOT NULL) ON VIOLATION DROP ROW,

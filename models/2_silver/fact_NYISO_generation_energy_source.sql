@@ -1,13 +1,13 @@
 USE SCHEMA silver;
 
 CREATE OR REFRESH MATERIALIZED VIEW fact_NYISO_generation_energy_source (
-    ges_id COMMENT 'Unique row hash key for generation by fuel source.',
-    period_timestamp COMMENT 'Hourly truncated timestamp (UTC) for energy generation as string "yyyy-MM-ddTHH".',
-    ba_code COMMENT 'Balancing authority code.',
-    fuel_code COMMENT 'Fuel source code: NG (Natural Gas), NUC (Nuclear), WAT (Hydro), WND (Wind), SUN (Solar), OIL (Oil), COL (Coal), OTH (Other).',
-    value_mwh COMMENT 'Net generation in Megawatt-hours (MWh).',
-    bronze_processed_timestamp COMMENT 'Audit timestamp from bronze layer.',
-    silver_processed_timestamp COMMENT 'Audit timestamp for silver processing.',
+    ges_id STRING COMMENT 'Unique row hash key for generation by fuel source.',
+    period_timestamp STRING COMMENT 'Hourly truncated timestamp (UTC) for energy generation as string "yyyy-MM-ddTHH".',
+    ba_code STRING COMMENT 'Balancing authority code.',
+    fuel_code STRING COMMENT 'Fuel source code: NG (Natural Gas), NUC (Nuclear), WAT (Hydro), WND (Wind), SUN (Solar), OIL (Oil), COL (Coal), OTH (Other).',
+    value_mwh DOUBLE COMMENT 'Net generation in Megawatt-hours (MWh).',
+    bronze_processed_timestamp TIMESTAMP COMMENT 'Audit timestamp from bronze layer.',
+    silver_processed_timestamp TIMESTAMP COMMENT 'Audit timestamp for silver processing.',
     
     -- 1. Data Quality Expectations
     CONSTRAINT valid_ges_id EXPECT (ges_id IS NOT NULL) ON VIOLATION DROP ROW,

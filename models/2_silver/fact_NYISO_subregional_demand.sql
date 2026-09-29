@@ -1,13 +1,13 @@
 USE SCHEMA silver;
 
 CREATE OR REFRESH MATERIALIZED VIEW fact_NYISO_subregional_demand (
-    srd_id COMMENT 'Unique row hash key for subregional demand.',
-    period_timestamp COMMENT 'Hourly truncated timestamp (UTC) for electricity demand as string "yyyy-MM-ddTHH".',
-    ba_code COMMENT 'Balancing authority code (e.g., NYIS).',
-    sub_ba_code COMMENT 'Sub-balancing authority zone code (e.g., ZONA, ZONJ). Joins to dim_combined_zone.sub_ba_code.',
-    value_mwh COMMENT 'Electricity demand/load for the hour in Megawatt-hours (MWh).',
-    bronze_processed_timestamp COMMENT 'Audit timestamp from bronze layer.',
-    silver_processed_timestamp COMMENT 'Audit timestamp for silver processing.',
+    srd_id STRING COMMENT 'Unique row hash key for subregional demand.',
+    period_timestamp STRING COMMENT 'Hourly truncated timestamp (UTC) for electricity demand as string "yyyy-MM-ddTHH".',
+    ba_code STRING COMMENT 'Balancing authority code (e.g., NYIS).',
+    sub_ba_code STRING COMMENT 'Sub-balancing authority zone code (e.g., ZONA, ZONJ). Joins to dim_combined_zone.sub_ba_code.',
+    value_mwh DOUBLE COMMENT 'Electricity demand/load for the hour in Megawatt-hours (MWh).',
+    bronze_processed_timestamp TIMESTAMP COMMENT 'Audit timestamp from bronze layer.',
+    silver_processed_timestamp TIMESTAMP COMMENT 'Audit timestamp for silver processing.',
     
     -- 1. Data Quality Expectations
     CONSTRAINT valid_srd_id EXPECT (srd_id IS NOT NULL) ON VIOLATION DROP ROW,
