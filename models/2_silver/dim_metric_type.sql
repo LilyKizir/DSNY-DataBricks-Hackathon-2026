@@ -1,14 +1,21 @@
-use schema silver;
-CREATE OR REFRESH MATERIALIZED VIEW dim_metric_type(
-        -- 1. Data Quality Expectations
+USE SCHEMA silver;
+
+CREATE OR REFRESH MATERIALIZED VIEW dim_metric_type (
+    type_code STRING NOT NULL COMMENT 'Grid operation metric short code: D (Demand), DF (Day-ahead forecast), NG (Net generation), TI (Total interchange).',
+    type_name STRING COMMENT 'Full descriptive name of the operating metric.',
+    
+    -- 1. Data Quality Expectations
+    CONSTRAINT valid_type_code EXPECT (type_code IS NOT NULL) ON VIOLATION DROP ROW,
+
+    -- 2. Primary Key Constraint for Unity Catalog / Databricks Genie
+    CONSTRAINT pk_dim_metric_type PRIMARY KEY (type_code)
 )
-COMMENT "Metric Type dim"
+COMMENT "NYISO operating metric type dimension"
 AS
-with stg_source as (
-    select * from the_data_masons.bronze.bronze_nyiso_operation_metrics
+WITH stg_source AS (
+    SELECT * FROM the_data_masons.bronze.bronze_nyiso_operation_metrics
 )
-select
-    type_code
-    ,type_name
-from stg_source
-group by all
+SELECT DISTINCT
+    type_code,
+    type_name
+FROM stg_source;
