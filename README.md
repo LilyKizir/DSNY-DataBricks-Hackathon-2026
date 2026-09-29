@@ -1,36 +1,34 @@
 # DSNY Databricks Hackathon 2026: The Data Masons
 
-New York electricity data (NYISO, via the EIA API) joined with hourly weather, modelled on Databricks as a medallion lakehouse (landing → bronze → silver → gold) and analysed in Tableau and a Databricks Genie space.
+## Purpose of this project
 
-```
-EIA API v2 (NYISO) ──► scripts/extract_eia_data.py ──► the_data_masons.landing.raw_*
-IEM ASOS weather   ──► scripts/extract_weather_data.py ──► the_data_masons.bronze.bronze_weather_data
-                                                              │
-                              the-data-masons-pipeline (Lakeflow Declarative Pipelines, models/**)
-                                                              │
-                                   bronze ──► silver (facts + dims) ──► gold
-                                                                          │
-                                                   Tableau workbooks · Genie space
+Getting from a business question to a trusted dashboard usually takes a lot of back and forth between the person asking and a data engineer. We built an ETL pipeline on Databricks with an AI-assisted way to create gold models. A user asks a question in plain English, such as _"How does the weather impact electricity usage?"_:
 
-new gold model: sandbox/ ──► your sandbox pipeline ──► PR ──► merge to main
-                                                               └► GitHub Action ──► the-data-masons-pipeline ──► gold
-```
+1. A Databricks Genie agent drafts the SQL.
+2. Claude Code tests the draft and corrects it.
+3. The model is built in the user's own sandbox so they can check it.
+4. A data engineer reviews the pull request and merges it.
+5. A GitHub Action publishes the table to gold.
+6. A Tableau workbook is created, ready for visualization.
+
+Every AI-generated model is validated twice, because AI-generated SQL can look right and still be wrong. In our test, Genie's first draft returned no rows because of mismatched zone codes.
+
 ## Repository layout
 
-| Path                       | What's in it                                                                                                             |
-| -------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| `models/1_bronze/`         | Materialized views that parse the raw EIA JSON from `landing`                                                            |
-| `models/2_silver/`         | Cleaned, typed facts and dimensions                                                                                      |
-| `models/3_gold/`           | Shared gold models (reviewed and merged via PR)                                                                          |
-| `sandbox/`                 | Personal gold experiments, gitignored. Built by your own sandbox pipeline (`databricks.yml`)                             |
-| `scripts/`                 | Ingestion scripts, Databricks connection helper, Tableau datasource swap                                                 |
-| `database_config/`         | Notebook that creates the catalog's schemas and volumes. **It drops them first**, so only run it to rebuild from scratch |
-| `sample_Tableau_workbook/` | Template Tableau workbook with the Databricks connection                                                                 |
-| `gold_tableau_workbooks/`  | Workbooks generated from the template, one per gold model                                                                |
-| `docs/`                    | How-tos, starting with [adding a gold model](docs/adding_a_gold_model.md)                                                |
-| `databricks.yml`           | Asset bundle for the personal gold sandbox pipeline                                                                      |
-| `.github/workflows/`       | `databricks_cicd.yml`: publishes gold on merge to `main` (pulls the workspace Git folder, runs the shared pipeline)       |
-| `.claude/skills/gold-model/` | The `/gold-model` Claude Code skill (see [With Claude Code](#adding-a-gold-model))                                     |
+| Path                         | What's in it                                                                                                         |
+| ---------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `models/1_bronze/`           | Materialized views that parse the raw EIA JSON from `landing` and the weather data from api                          |
+| `models/2_silver/`           | Cleaned facts and dim models dimensions                                                                              |
+| `models/3_gold/`             | Shared gold models (reviewed and merged via PR)                                                                      |
+| `sandbox/`                   | Personal gold experiments, gitignored. Built by your own sandbox pipeline (`databricks.yml`)                         |
+| `scripts/`                   | Ingestion scripts, Databricks connection helper, Tableau datasource swap                                             |
+| `database_config/`           | Notebook that creates the catalog's schemas and volumes. It drops them first, so only run it to rebuild from scratch |
+| `sample_Tableau_workbook/`   | Template Tableau workbook with the Databricks connection                                                             |
+| `gold_tableau_workbooks/`    | Workbooks generated from the template, one per gold model                                                            |
+| `docs/`                      | How-tos, starting with [adding a gold model](docs/adding_a_gold_model.md)                                            |
+| `databricks.yml`             | Asset bundle for the personal gold sandbox pipeline                                                                  |
+| `.github/workflows/`         | `databricks_cicd.yml`: publishes gold on merge to `main` (pulls the workspace Git folder, runs the shared pipeline)  |
+| `.claude/skills/gold-model/` | The `/gold-model` Claude Code skill (see [With Claude Code](#adding-a-gold-model))                                   |
 
 ## Data
 
@@ -48,19 +46,6 @@ All tables live in the Unity Catalog catalog **`the_data_masons`** on workspace 
 - **Electricity:** [EIA API v2](https://www.eia.gov/opendata/) RTO endpoints for NYISO: hourly region data, generation by fuel type, and demand by sub-region (NYISO zones A–K).
 - **Weather:** hourly ASOS station observations from the Iowa Environmental Mesonet, mapped to NYISO zones through counties.
 
-### Data coverage
-
-| Data | Loaded in silver |
-|---|---|
-| Weather | 2025-01-01 to 2026-09-25, 43 stations, 10 zones (no stations in zone H, Millwood) |
-| Demand by zone | Mostly **2026-07-01 to 2026-09-19**: 78 complete days per zone, plus a few partial days. Earlier hours are missing |
-
-### Time and keys
-
-- **Time zones:** timestamps are stored in UTC. Gold models convert to New York local time (`from_utc_timestamp(..., 'America/New_York')`) before bucketing into days or months, because NYISO reports on Eastern time.
-- **Hour-ending periods:** EIA's hourly `period` marks the *end* of the hour, so gold models step back one hour before taking the local day.
-- **Zone keys:** weather and the demand fact use the zone letter (`A`–`K`), but `dim_subregion` uses EIA codes (`ZONA`–`ZONK`). Join on `RIGHT(sub_ba_code, 1)`.
-
 ## Getting started
 
 ### Prerequisites
@@ -71,13 +56,14 @@ All tables live in the Unity Catalog catalog **`the_data_masons`** on workspace 
   databricks auth login --host ${DATABRICKS_HOST}
   ```
 - Python 3.12 (for the local scripts)
-- Optional: [GitHub CLI](https://cli.github.com/) (`gh auth login`), Tableau Desktop
+- Optional: [GitHub CLI](https://cli.github.com/) (`gh auth login`)
+- Tableau Desktop with installed ODBC Databricks driver
 
 ### Local Python environment
 
 ```bash
 python -m venv .venv
-.venv\Scripts\activate          # Windows  (macOS/Linux: source .venv/bin/activate)
+.venv\Scripts\activate          # Windows  (for macOS/Linux: source .venv/bin/activate)
 pip install -r requirements.txt
 ```
 
@@ -98,30 +84,25 @@ GENIE_SPACE_ID=<Genie space id>
 
 # Sources
 WEATHER_API_KEY=<key>
-ZONE_COUNTY_URL=<zone-to-county mapping file URL>
-IEM_STATIONS_URL=<IEM station list URL>
-IEM_ASOS_URL=<IEM ASOS download URL>
+ZONE_COUNTY_URL = "https://www.weather.gov/source/gis/Shapefiles/County/bp16ap26.dbx"
+IEM_STATIONS_URL = "https://mesonet.agron.iastate.edu/geojson/network/NY_ASOS.geojson"
+IEM_ASOS_URL = "https://mesonet.agron.iastate.edu/cgi-bin/request/asos.py"
 ```
 
 Test the connection with `python -m scripts.connect_databricks`.
 
 ## Ingestion
 
-| Script                            | Runs                                                                               | Writes                                                                                                                                         |
-| --------------------------------- | ---------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| `scripts/extract_eia_data.py`     | In Databricks (uses `dbutils.secrets`, scope `the-data-masons`, key `eia_api_key`) | `landing.raw_*`                                                                                                                                |
-| `scripts/extract_weather_data.py` | Locally via Databricks Connect (`python -m scripts.extract_weather_data`)          | `bronze.bronze_weather_data` (Delta MERGE). The first run backfills from 2025-01-01, later runs pick up from each station's latest observation |
+| Script                            | Runs                                                                               |
+| --------------------------------- | ---------------------------------------------------------------------------------- |
+| `scripts/extract_eia_data.py`     | In Databricks (uses `dbutils.secrets`, scope `the-data-masons`, key `eia_api_key`) |
+| `scripts/extract_weather_data.py` | Locally via Databricks Connect (`python -m scripts.extract_weather_data`)          |
 
 ## The shared pipeline
 
-**`the-data-masons-pipeline`** (Lakeflow Declarative Pipelines, serverless) builds everything in `models/**` from the team's workspace Git folder on `main`. Each file sets its target with `USE SCHEMA bronze|silver|gold;` and defines one `CREATE OR REFRESH MATERIALIZED VIEW`.
+**`the-data-masons-pipeline`** builds everything in `models/**` from the team's workspace Git folder on `main`. Each file sets its target with `USE SCHEMA bronze|silver|gold;` and defines one `CREATE OR REFRESH MATERIALIZED VIEW`.
 
-**Publishing is automatic.** When a merge to `main` changes `models/3_gold/**`, the GitHub Action [`databricks_cicd.yml`](.github/workflows/databricks_cicd.yml) pulls the workspace Git folder and starts the pipeline. To run it by hand (for example after a bronze/silver change, or if the Action fails):
-
-```bash
-databricks repos update ${WORKSPACE_GIT_FOLDER_ID} --branch main -p <profile>
-databricks pipelines start-update ${GOLD_PIPELINE_ID} -p <profile>
-```
+**Publishing is automatic.** When a merge to `main` changes `models/3_gold/**`, the GitHub Action [`databricks_cicd.yml`](.github/workflows/databricks_cicd.yml) pulls the workspace Git folder and starts the pipeline.
 
 ## Adding a gold model
 
@@ -167,17 +148,6 @@ python scripts/swap_tableau_datasource.py \
 ```
 
 This writes `gold_tableau_workbooks/<model name>.twb`. If the script lists missing fields, fix them in Tableau with **Replace References**. Only `.twb` workbooks are supported; save a `.twbx` as `.twb` first.
-
-## Genie
-
-The Genie space **NYISO Energy and Weather Analysis** (id `${GENIE_SPACE_ID}`) answers questions in plain English over the silver tables. It's also available to Claude as an MCP server. Treat its SQL as a draft: Genie tends to cut months on UTC and weight zones by station count. For the weather–demand question, it joined the demand fact to `dim_subregion` on mismatched codes (`A` against `ZONA`) and returned 0 rows. The gold models are the reference numbers.
-
-## Known issues
-
-- **Silver doesn't match the repo:** in the live `fact_NYISO_subregional_demand`, `period_timestamp` is still a STRING, although `models/2_silver/` casts it to a timestamp. Gold models use `CAST(period_timestamp AS TIMESTAMP)`, which works either way.
-- **Zone codes differ:** the demand fact has zone letters, but `dim_subregion` has `ZONA`–`ZONK` (see [Time and keys](#time-and-keys)).
-- **Missing data:** zone H (Millwood) has no weather stations, and demand before July 2026 isn't loaded yet.
-- **Manual reruns for bronze/silver:** the GitHub Action only runs for `models/3_gold/**` changes, so run the shared pipeline by hand after bronze or silver changes.
 
 ## License
 
