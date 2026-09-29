@@ -1,18 +1,23 @@
--- this must be unified with subregion table
+USE SCHEMA silver;
 
--- make from le's table
+CREATE OR REFRESH MATERIALIZED VIEW dim_nyiso_zone (
+    nyiso_zone STRING NOT NULL COMMENT 'Single-letter code representing NYISO load zone (A through K).',
+    nyiso_zone_name STRING COMMENT 'Full descriptive name of the NYISO load zone.',
+    
+    -- 1. Data Quality Expectations
+    CONSTRAINT valid_nyiso_zone EXPECT (nyiso_zone IS NOT NULL) ON VIOLATION DROP ROW,
 
-use schema silver;
-CREATE OR REFRESH MATERIALIZED VIEW dim_nyiso_zone(
-        -- 1. Data Quality Expectations
+    -- 2. Primary Key Constraint for Unity Catalog / Databricks Genie
+    CONSTRAINT pk_dim_nyiso_zone PRIMARY KEY (nyiso_zone)
 )
-COMMENT "Nyiso Zone dim"
+COMMENT "NYISO weather load zone dimension"
 AS
-with stg_source as (
-    select * from the_data_masons.bronze.bronze_weather_data
+WITH 
+stg_source AS (
+    select *
+    FROM the_data_masons.bronze.bronze_weather_data
 )
-select distinct
-     nyiso_zone
-     ,nyiso_zone_name
-from stg_source
-group by all
+SELECT DISTINCT
+    nyiso_zone,
+    nyiso_zone_name
+FROM stg_source;
