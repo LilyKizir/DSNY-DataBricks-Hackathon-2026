@@ -30,4 +30,4 @@ jobs:
           
       - name: Trigger Gold Layer ETL Job
         run: |
-          databricks pipelines start-update --pipeline-id ${{ secrets.DATABRICKS_PIPELINE_ID }}
+          databricks pipelines start-update ${{ secrets.DATABRICKS_PIPELINE_ID }}
